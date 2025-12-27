@@ -1,0 +1,12 @@
+LLM Usage Report - Exercise 3 (XSS)
+
+Tools Used:
+
+Gemini 2.0 Flash (via Web): Used as a study partner to understand the assignment requirements, the network architecture, and the theoretical differences between the XSS types.
+
+Windsurf (Claude 3.5 Sonnet): Used as the primary coding assistant for generating C boilerplate code and constructing URL-encoded payloads.
+
+
+How the LLMs were used:
+
+Debugging: I prompted the LLM to ensure all code complies with -Wall -Wextra -Werror -Wconversion to avoid point deductions.
