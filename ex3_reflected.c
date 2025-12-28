@@ -26,11 +26,15 @@
 /*
  * extract_sessid - Extracts only the SESSID value from HTTP request
  * @request: The raw HTTP request string
+ * @sessid_out: Output buffer to store the extracted SESSID
+ * @out_size: Size of the output buffer
  * 
  * Searches for SESSID in the Cookie header or URL parameters and
  * extracts only its value without any prefix.
+ * 
+ * Returns: 1 on success, 0 if SESSID not found or error
  */
-static void extract_sessid(const char *request) {
+static int extract_sessid(const char *request, char *sessid_out, size_t out_size) {
     const char *sessid_start = NULL;
     
     sessid_start = strstr(request, "SESSID=");
@@ -59,16 +63,13 @@ static void extract_sessid(const char *request) {
         }
         
         size_t sessid_len = (size_t)(sessid_end - sessid_start);
-        if (sessid_len > 0) {
-            char *sessid = malloc(sessid_len + 1);
-            if (sessid != NULL) {
-                memcpy(sessid, sessid_start, sessid_len);
-                sessid[sessid_len] = '\0';
-                printf("%s\n", sessid);
-                free(sessid);
-            }
+        if (sessid_len > 0 && sessid_len < out_size) {
+            memcpy(sessid_out, sessid_start, sessid_len);
+            sessid_out[sessid_len] = '\0';
+            return 1;
         }
     }
+    return 0;
 }
 
 /*
@@ -127,6 +128,7 @@ int main(void) {
     struct sockaddr_in client_addr;
     socklen_t client_addr_len;
     char buffer[BUFFER_SIZE];
+    char sessid[256];
     ssize_t bytes_read;
     FILE *output_file;
 
@@ -207,7 +209,13 @@ int main(void) {
     printf("Request written to %s\n", OUTPUT_FILE);
 
     extract_cookie(buffer);
-    extract_sessid(buffer);
+    
+    memset(sessid, 0, sizeof(sessid));
+    if (extract_sessid(buffer, sessid, sizeof(sessid))) {
+        printf("SESSID stored: %s\n", sessid);
+    } else {
+        printf("SESSID not found in request\n");
+    }
 
     send_http_response(client_fd);
 
