@@ -66,8 +66,8 @@ int main(void) {
     struct sockaddr_in server_addr;
     char xss_payload[512];
     char encoded_payload[2048];
-    char post_data[2048];
-    char http_request[4096];
+    char post_data[4096];
+    char http_request[8192];
     char response_buffer[BUFFER_SIZE];
     ssize_t bytes_sent;
     ssize_t bytes_received;
