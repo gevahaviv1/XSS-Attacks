@@ -24,6 +24,54 @@
 #define OUTPUT_FILE "spoofed-reflected.txt"
 
 /*
+ * extract_sessid - Extracts only the SESSID value from HTTP request
+ * @request: The raw HTTP request string
+ * 
+ * Searches for SESSID in the Cookie header or URL parameters and
+ * extracts only its value without any prefix.
+ */
+static void extract_sessid(const char *request) {
+    const char *sessid_start = NULL;
+    
+    sessid_start = strstr(request, "SESSID=");
+    
+    if (sessid_start == NULL) {
+        const char *cookie_line = strstr(request, "Cookie:");
+        if (cookie_line == NULL) {
+            cookie_line = strstr(request, "cookie:");
+        }
+        
+        if (cookie_line != NULL) {
+            sessid_start = strstr(cookie_line, "SESSID=");
+        }
+    }
+    
+    if (sessid_start != NULL) {
+        sessid_start += 7;
+        
+        const char *sessid_end = sessid_start;
+        while (*sessid_end != '\0' && 
+               *sessid_end != ';' && 
+               *sessid_end != ' ' && 
+               *sessid_end != '\r' && 
+               *sessid_end != '\n') {
+            sessid_end++;
+        }
+        
+        size_t sessid_len = (size_t)(sessid_end - sessid_start);
+        if (sessid_len > 0) {
+            char *sessid = malloc(sessid_len + 1);
+            if (sessid != NULL) {
+                memcpy(sessid, sessid_start, sessid_len);
+                sessid[sessid_len] = '\0';
+                printf("%s\n", sessid);
+                free(sessid);
+            }
+        }
+    }
+}
+
+/*
  * extract_cookie - Extracts and prints cookie information from HTTP request
  * @request: The raw HTTP request string
  * 
@@ -159,6 +207,7 @@ int main(void) {
     printf("Request written to %s\n", OUTPUT_FILE);
 
     extract_cookie(buffer);
+    extract_sessid(buffer);
 
     send_http_response(client_fd);
 
