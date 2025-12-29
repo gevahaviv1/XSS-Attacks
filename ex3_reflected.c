@@ -158,7 +158,7 @@ static int recv_response_from_web(int web_fd){
     return 0;
   }
   response_from_web[recv_len] = '\0';
-  res_write2file = write_to_out_file (response_from_web);
+  int res_write2file = write_to_out_file (response_from_web);
   return res_write2file;
 }
 
@@ -342,7 +342,7 @@ int main(void) {
 
         close(client_fd);
         close(server_fd);
-        printf ("Failed to send request to web")
+        printf ("Failed to send request to web");
         exit(EXIT_FAILURE);
     }
 
