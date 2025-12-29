@@ -213,7 +213,7 @@ int main(void) {
     }
     // BIND AND LISTEN
     struct sockaddr_in addr;
-    int bind_n_listen = bind_and_listen(server_fd, addr);
+    int bind_n_listen = bind_and_listen(server_fd, &addr);
     if (bind_n_listen!=1){
       close(server_fd);
       exit(EXIT_FAILURE);
