@@ -99,9 +99,9 @@ static int extract_cookie(const char *request,
  */
 static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
 {
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(PORT);
+  server_addr->sin_family = AF_INET;
+  server_addr->sin_addr.s_addr = INADDR_ANY;
+  server_addr->sin_port = htons(PORT);
 
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
     return 0;
@@ -189,6 +189,16 @@ static int send_request_to_web(const char *cookie_id)
   }
   close(web_fd);
   return 1;
+}
+
+/*
+ * ACCEPT CLIENT
+ */
+static int accept_client(int server_fd, struct sockaddr_in *client_addr){
+  socklen_t  client_addr_len = sizeof(client_addr);
+  int client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
+                         &client_addr_len);
+  return client_fd;
 }
 
 int main(void) {
