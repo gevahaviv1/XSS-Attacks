@@ -21,8 +21,6 @@
 #include <arpa/inet.h>
 
 #define WEB_PORT 80
-#define PORT 8888
-#define BUFFER_SIZE 8192
 #define WEB_IP "192.168.1.203"
 #define COOKIE_LEN 64
 #define PORT 9999
@@ -54,7 +52,7 @@ static int extract_sessid(const char *request,
 
   /* expect cookie=....*/
 
-  const char *end = sessid;
+  const char *end = cookie_start;
   while (*end != ' ' &&
          *end != '\r' &&
          *end != '\n')
@@ -62,11 +60,11 @@ static int extract_sessid(const char *request,
     end++;
   }
 
-  size_t len = (size_t)(end - sessid);
+  size_t len = (size_t)(end - cookie_start);
   if (len == 0 || len >= out_size)
     return 0;
 
-  memcpy(sessid_out, sessid, len);
+  memcpy(sessid_out, cookie_start, len);
   sessid_out[len] = '\0';
   return 1;
 }

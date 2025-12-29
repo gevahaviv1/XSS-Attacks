@@ -109,13 +109,13 @@ int main(void) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(TARGET_PORT);
 
-    if (inet_pton(AF_INET, TARGET_HOST, &server_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, WEB_IP, &server_addr.sin_addr) <= 0) {
         perror("Invalid address");
         close(sock_fd);
         return 1;
     }
 
-    printf("Connecting to %s:%d...\n", TARGET_HOST, TARGET_PORT);
+    printf("Connecting to %s:%d...\n", WEB_IP, TARGET_PORT);
 
     if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Connection failed");

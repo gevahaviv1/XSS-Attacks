@@ -197,7 +197,7 @@ static int send_request_to_web(const char *cookie_id)
  */
 static int accept_addr(int server_fd, struct sockaddr_in *addr){
   socklen_t  addr_len = sizeof(addr);
-  int accept_fd = accept(server_fd, (struct sockaddr *)&addr,
+  int accept_fd = accept(server_fd, (struct sockaddr *)addr,
                          &addr_len);
   return accept_fd;
 }
@@ -214,7 +214,7 @@ int main(void) {
     }
     // BIND AND LISTEN
     struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr))
+    memset(&addr, 0, sizeof(addr));
     int bind_n_listen = bind_and_listen(server_fd, &addr);
     if (bind_n_listen!=1){
       printf("closed bind and listen");
