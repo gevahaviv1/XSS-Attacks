@@ -26,6 +26,7 @@
 #define OUTPUT_FILE "spoofed-reflected.txt"
 #define COOKIE_LEN 64
 
+
 /*
  * extract_sessid - Extracts only the PHPSESSID value from HTTP request
  * @request: The raw HTTP request string
