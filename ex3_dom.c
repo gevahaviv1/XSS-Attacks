@@ -103,7 +103,7 @@ static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
   server_addr->sin_addr.s_addr = INADDR_ANY;
   server_addr->sin_port = htons(PORT);
 
-  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(*server_addr))
+  if (bind(server_fd, (struct sockaddr *)server_addr, sizeof(*server_addr))
       < 0) {
     return 0;
   }
